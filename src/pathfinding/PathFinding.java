@@ -1,23 +1,17 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
-
 package pathfinding;
 
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
-import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
-import java.util.ArrayList;
 
 /**
  *
@@ -26,12 +20,12 @@ import java.util.ArrayList;
 public class PathFinding {
     
     private static JFrame mainGui;
-    private static currentButton selectedButton;
+    private static SquareType selectedButton;
     private static final int width = 7, height = 5;
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String[] args) {
+    private static ArrayList open, closed;
+    
+    public static void main(String[] args) 
+    {
         mouseListenerForSquares ml = new mouseListenerForSquares();
         
         mainGui = new JFrame();
@@ -57,9 +51,9 @@ public class PathFinding {
         options.setLocation(0,height*101);
         options.setBackground(Color.white);
         
-        optionButton selectBegin = new optionButton("Select Begin", currentButton.start);
-        optionButton selectEnd = new optionButton("Select End", currentButton.end);
-        optionButton selectWall = new optionButton("Select Walls", currentButton.wall);
+        optionButton selectBegin = new optionButton("Select Begin", SquareType.start);
+        optionButton selectEnd = new optionButton("Select End", SquareType.end);
+        optionButton selectWall = new optionButton("Select Walls", SquareType.wall);
         
         options.add(selectBegin);
         options.add(selectEnd);
@@ -76,6 +70,18 @@ public class PathFinding {
             });
         }
         
+        JButton startPathFinding = new JButton();
+        startPathFinding.setSize(50,150);
+        startPathFinding.setText("Find Quickest Path");
+        startPathFinding.setBackground(null);
+        startPathFinding.addActionListener(new ActionListener(){
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                startPathFinding(e);
+            }
+        });
+        
+        options.add(startPathFinding);
         contentPane.add(options);
         contentPane.validate();
         contentPane.repaint();
@@ -83,7 +89,9 @@ public class PathFinding {
         mainGui.setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         mainGui.setVisible(true);
         
-        selectedButton = currentButton.none;
+        selectedButton = SquareType.none;
+        open = new ArrayList();
+        closed = new ArrayList();
     }
     
     private static void optionButtonPressed(ActionEvent e)
@@ -98,7 +106,7 @@ public class PathFinding {
         //Change the current button selected
         if (button.getTag() == selectedButton)
         {    
-            selectedButton = currentButton.none;
+            selectedButton = SquareType.none;
             button.setBackground(null);
         }else
         {
@@ -113,10 +121,11 @@ public class PathFinding {
         //Since the panel that contains the button is at the end of the component list
         //we can just access it directly
         JPanel buttonContainer = (JPanel)mainGui.getContentPane().getComponent(mainGui.getContentPane().getComponentCount() - 1);
-        for (Component b : buttonContainer.getComponents())
+        for (int i = 0; i < 3; i++)
         {
+            Component[] b = buttonContainer.getComponents();
             //we then access all the option buttons and set their background to the defualt
-            ((optionButton)b).setBackground(null);
+            ((optionButton)b[i]).setBackground(null);
         }
     }
     
@@ -124,91 +133,225 @@ public class PathFinding {
     {
         square s = (square)e.getSource();
         
-        System.out.println("Square clicked");
-        
         switch(selectedButton)
         {
             case start:
-                clearSquaresOf(currentButton.start);
+                clearSquaresOfType(SquareType.start);
                 s.setStart(true);
                 break;
+                
             case end:
-                clearSquaresOf(currentButton.end);
+                clearSquaresOfType(SquareType.end);
                 s.setEnd(true);
                 break;
+                
             case wall:
-                if (!s.getEnd() || !s.getStart())
+                if (!s.getEnd() || !s.getStart()) {
                     s.toggleWall();
+                }
                 break;
         }
     }
     
-    //clears the board of the start/end squares depending on which is passed in
-    private static void clearSquaresOf(currentButton sel)
+    private static void clearSquaresOfType(SquareType sel)
     {
         Container contentPane = mainGui.getContentPane();
-        int id = getStartOrEnd(sel);
-        if (id < 0) //there is no start or end
-            return;
+        int id;
         
-        if (sel == currentButton.start)
-            ((square)contentPane.getComponent(id)).setStart(false);
-        else
-            ((square)contentPane.getComponent(id)).setEnd(false);
+        if (getSquareOfType(sel) == null) { //there is no start or end
+            return;
+        }else
+        {
+            id = getSquareOfType(sel).getId();
+        }
+        
+        if (sel == SquareType.start) {
+            getSquare(id).setStart(false);
+        } else {
+            getSquare(id).setEnd(false);
+        }
     }
     
-    private static int getStartOrEnd(currentButton sel)
+    private static square getSquareOfType(SquareType sel)
     {
         Container contentPane = mainGui.getContentPane();
         square s;
         int id = -1;
-        //Do not include the last element, the options panel
-        for (int i = 0; i < contentPane.getComponentCount() - 2; i++)
+        
+        for (int i = 0; i < width * height; i++)
         {
             s = (square)contentPane.getComponent(i);
             switch (sel)
             {
                 case start:
-                    if (s.getStart())
-                        id = i;
+                    if (s.getStart()) {
+                        id = s.getId();
+                    }
                     break;
                     
                 case end:
-                    if (s.getEnd())
-                        id = i;
+                    if (s.getEnd()) {
+                        id = s.getId();
+                    }
                     break;
             }
         }
-        return id;
+        return getSquare(id);
     }
     
-    private static ArrayList getSurroundingSquares(int id)
+    private static square getSquare(int id)
     {
-        int[] dir = {-1*width-1, -1*width, -1*width+1,
-                    -1, 1,
-                    width-1, width, width+1};
-        ArrayList possibleMoveToLoc = new ArrayList();
-        for (int direction : dir)
+        Container contentPane = mainGui.getContentPane();
+        for (int i = 0; i < width * height; i++)
         {
-            if (inField(id, direction + id))
+            square s = (square)contentPane.getComponent(i);
+            if (s.getId() == id)
+                return s;
+        }
+        return null;
+    }
+    
+    private static boolean inField(int start, int end)
+    {
+        if (start % width == 0 && end % width == width - 1)
+            return false;
+        
+        if (start % width == width - 1 && end % width == 0)
+            return false;
+        
+        if (end < 0 || end > width * height - 1)
+            return false;
+        
+        return true;
+    }
+    
+    private static ArrayList getSurrounding(int id)
+    {
+        int[] directions = { -1 * width - 1, -1 * width, -1 * width + 1,
+                            -1,  1,
+                            width - 1, width, width + 1};
+        
+        ArrayList squares = new ArrayList();
+         
+        for (int i = 0; i < directions.length; i++)
+        {
+            int newId = id + directions[i];
+            if (inField(id, newId))
             {
-                possibleMoveToLoc.add(id + direction);
+                squares.add(getSquare(newId));
             }
         }
-        return possibleMoveToLoc;
+        
+        return squares;
     }
     
-    
-    private static boolean inField(int id1, int id2)
+    private static ArrayList getValidSurroudingSquares(square parent)
     {
-        if (id2 >= width * height || id2 < 0)
-            return false;
-        //crossing over the left side
-        if (id2 % width > id1 % width && id1 % width == 0)
-            return false;
-        //over the left side
-        if (id1 % width > id2 % width && id2 % width == 0)
-            return false;
-        return true;
+        ArrayList squares = getSurrounding(parent.getId());
+        
+        for (int i = 0; i < squares.size(); i++)
+        {
+            square s = (square)squares.toArray()[i];
+            
+            if (s.getWall() || closed.contains(s))
+            {
+                squares.remove(s);
+                i--;
+            }else
+            {
+                if (!s.getEnd())
+                    s.setOutline(1);
+            }
+        }
+        
+        return setParents(squares, parent);
+    }
+    
+    private static ArrayList setParents(ArrayList collection, square parent)
+    {
+        for (Object o : collection)
+        {
+            square s = (square)o;
+            
+            
+            if (s.getId() - parent.getId() % width == 0 ||
+                    (s.getId() - parent.getId()) / 2 == 0)
+            {
+                //Cardinal direction from parent
+                if (s.getGScore() >= parent.getGScore() + 10 || s.getGScore() == 0)
+                {
+                    s.setParentID(parent.getId());
+                    s.setGScore(parent.getGScore() + 10);
+                }
+            }else
+            {
+                if (s.getGScore() >= parent.getGScore() + 14 || s.getGScore() == 0)
+                {
+                    s.setParentID(parent.getId());
+                    s.setGScore(parent.getGScore() + 14);
+                }
+            }
+            
+            s.setHScore(estimateHScore(s.getId()));
+        }
+        
+        return collection;
+    }
+    
+    private static int estimateHScore(int id)
+    {
+        int end = getSquareOfType(SquareType.end).getId();
+        int sum = 0;
+        
+        //Horizontal and vertical estimate
+        sum += Math.abs(id % width - end % width) * 10; 
+        sum += Math.abs(id / width - end / width) * 10;
+        
+        return sum;
+    }
+    
+    private static square getClosest()
+    {
+        square lowest = (square)open.get(0);
+        
+        for (int i = 1; i < open.size(); i++)
+        {
+            square s = (square)open.get(i);
+            if (s.getFScore() < lowest.getFScore())
+                lowest = s;
+        }
+        
+        return lowest;
+    }
+    
+    private static void startPathFinding(ActionEvent e)
+    {        
+        open.addAll(getValidSurroudingSquares(getSquareOfType(SquareType.start)));
+        closed.add(getSquareOfType(SquareType.start));
+        
+        while (!closed.contains(getSquareOfType(SquareType.end)) && !open.isEmpty())
+        {
+            square closest = getClosest();
+            closest.repaint();
+            
+            closed.add(closest);
+            open.remove(closest);
+            open.addAll(getValidSurroudingSquares(closest));
+        }
+        
+        drawPath(getSquareOfType(SquareType.end).getParentID());
+    }
+    
+    private static void drawPath(int sId)
+    {
+        if (sId < 0)
+            return;
+        
+        square s = getSquare(sId);
+        
+        if (s.getParentID() != getSquareOfType(SquareType.start).getId())
+            drawPath(s.getParentID());        
+        
+        s.setOutline(2);
     }
 }

@@ -3,8 +3,8 @@ pathFinding
 
 Messing around with 2D pathfinding. 
 
-I plan to implement A* /eventually/.
+Looks like I ended up finishing this.
 
-Right now its just a simple framework for later.
+Looking to update it now for possible MUC usage.
 
 Started Mid 2013
